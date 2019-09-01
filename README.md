@@ -1,2 +1,2 @@
-# lenslocked.com
+# gophoto
 a website in go
