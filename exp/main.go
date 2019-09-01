@@ -1,24 +1,47 @@
 package main
 
 import (
-	"html/template"
-	"os"
+	"fmt"
+	_ "github.com/lib/pq"
+	"sinistra/lenslocked.com/models"
+)
+
+const (
+	host     = "localhost"
+	port     = 5432
+	user     = "postgres"
+	password = "mysecretpassword"
+	dbname   = "lenslocked"
 )
 
 func main() {
-	t, err := template.ParseFiles("hello.gohtml")
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+"password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
+	us, err := models.NewUserService(psqlInfo)
 	if err != nil {
 		panic(err)
 	}
-	data := struct {
-		Name string
-		Age  int
-	}{"John Smith",
-		42,
-	}
+	defer us.Close()
+	us.DestructiveReset()
 
-	err = t.Execute(os.Stdout, data)
+	// Create a user
+	user := models.User{
+		Name:  "Michael Scott",
+		Email: "michael@dundermifflin.com"}
+	if err := us.Create(&user); err != nil {
+		panic(err)
+	}
+	// NOTE: You may need to update the query code a bit as well
+	foundUser, err := us.ByID(1)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println(foundUser)
+
+	// Update the call to ByID to instead be ByEmail
+	foundUser, err = us.ByEmail("michael@dundermifflin.com")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(foundUser)
+
 }

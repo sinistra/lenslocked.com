@@ -5,9 +5,18 @@ import (
 	"github.com/gorilla/mux"
 	"net/http"
 	"sinistra/lenslocked.com/controllers"
+	"sinistra/lenslocked.com/models"
 )
 
-var port = ":3001"
+var httpport = ":3001"
+
+const (
+	host     = "localhost"
+	port     = 5432
+	user     = "postgres"
+	password = "mysecretpassword"
+	dbname   = "lenslocked"
+)
 
 //A helper function that panics on any error
 func must(err error) {
@@ -25,8 +34,20 @@ func fourofour(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+
+	// Create a DB connection string and then use it to
+	// create our model services.
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+"password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
+
+	us, err := models.NewUserService(psqlInfo)
+	if err != nil {
+		panic(err)
+	}
+	defer us.Close()
+	us.AutoMigrate()
+
 	staticC := controllers.NewStatic()
-	usersC := controllers.NewUsers()
+	usersC := controllers.NewUsers(us)
 
 	r := mux.NewRouter()
 	r.Handle("/", staticC.Home).Methods("GET")
@@ -38,6 +59,6 @@ func main() {
 	var h http.Handler = http.HandlerFunc(fourofour)
 	r.NotFoundHandler = h
 
-	fmt.Println("Server running on port " + port)
-	http.ListenAndServe(port, r)
+	fmt.Println("Server running on port " + httpport)
+	http.ListenAndServe(httpport, r)
 }
