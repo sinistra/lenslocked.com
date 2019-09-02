@@ -58,6 +58,7 @@ func main() {
 	// NOTE: We are using the Handle function, not HandleFunc
 	r.Handle("/login", usersC.LoginView).Methods("GET")
 	r.HandleFunc("/login", usersC.Login).Methods("POST")
+	r.HandleFunc("/cookietest", usersC.CookieTest).Methods("GET")
 
 	var h http.Handler = http.HandlerFunc(fourofour)
 	r.NotFoundHandler = h
