@@ -22,26 +22,22 @@ func main() {
 	}
 	defer us.Close()
 	us.DestructiveReset()
-
-	// Create a user
-	user := models.User{
-		Name:  "Michael Scott",
-		Email: "michael@dundermifflin.com"}
-	if err := us.Create(&user); err != nil {
-		panic(err)
-	}
-	// NOTE: You may need to update the query code a bit as well
-	foundUser, err := us.ByID(1)
+	user := models.User{Name: "Michael Scott",
+		Email: "michael@dundermifflin.com", Password: "bestboss"}
+	err = us.Create(&user)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(foundUser)
-
-	// Update the call to ByID to instead be ByEmail
-	foundUser, err = us.ByEmail("michael@dundermifflin.com")
+	// Verify that the user has a Remember and RememberHash
+	fmt.Printf("%+v\n", user)
+	if user.Remember == "" {
+		panic("Invalid remember token")
+	}
+	// Now verify that we can lookup a user with that remember
+	// token
+	user2, err := us.ByRemember(user.Remember)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(foundUser)
-
+	fmt.Printf("%+v\n", *user2)
 }
