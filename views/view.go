@@ -1,7 +1,9 @@
 package views
 
 import (
+	"bytes"
 	"html/template"
+	"io"
 	"net/http"
 	"path/filepath"
 )
@@ -39,15 +41,30 @@ func layoutFiles() []string {
 	return files
 }
 
-func (v *View) Render(w http.ResponseWriter, data interface{}) error {
+func (v *View) Render(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "text/html")
-	return v.Template.ExecuteTemplate(w, v.Layout, data)
+	switch data.(type) {
+	case Data:
+	// do nothing
+	default:
+		data = Data{
+			Yield: data,
+		}
+	}
+	var buf bytes.Buffer
+	err := v.Template.ExecuteTemplate(&buf, v.Layout, data)
+	if err != nil {
+		http.Error(w, "Something went wrong. If the problem "+
+			"persists, please email support@lenslocked.com", http.StatusInternalServerError)
+		return
+	}
+	// If we get here that means our template executed correctly
+	// and we can copy the buffer to the ResponseWriter
+	io.Copy(w, &buf)
 }
 
 func (v *View) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if err := v.Render(w, nil); err != nil {
-		panic(err)
-	}
+	v.Render(w, nil)
 }
 
 // addTemplatePath takes in a slice of strings
