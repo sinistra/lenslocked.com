@@ -78,13 +78,6 @@ type UserDB interface {
 	Create(user *User) error
 	Update(user *User) error
 	Delete(id uint) error
-
-	// Used to close a DB connection
-	Close() error
-
-	// Migration helpers
-	AutoMigrate() error
-	DestructiveReset() error
 }
 
 // userGorm represents our database interaction layer
@@ -132,17 +125,6 @@ type userValidator struct {
 	emailRegex *regexp.Regexp
 }
 
-func newUserGorm(connectionInfo string) (*userGorm, error) {
-	db, err := gorm.Open("postgres", connectionInfo)
-	if err != nil {
-		return nil, err
-	}
-	db.LogMode(true)
-	return &userGorm{
-		db: db,
-	}, nil
-}
-
 func newUserValidator(udb UserDB, hmac hash.HMAC) *userValidator {
 	return &userValidator{
 		UserDB:     udb,
@@ -151,14 +133,11 @@ func newUserValidator(udb UserDB, hmac hash.HMAC) *userValidator {
 	}
 }
 
-func NewUserService(connectionInfo string) (UserService, error) {
-	ug, err := newUserGorm(connectionInfo)
-	if err != nil {
-		return nil, err
-	}
+func NewUserService(db *gorm.DB) UserService {
+	ug := &userGorm{db}
 	hmac := hash.NewHMAC(hmacSecretKey)
 	uv := newUserValidator(ug, hmac)
-	return &userService{UserDB: uv}, nil
+	return &userService{UserDB: uv}
 }
 
 // ByID will look up a user with the provided ID.
@@ -212,11 +191,6 @@ func (ug *userGorm) Delete(id uint) error {
 	return ug.db.Delete(&user).Error
 }
 
-// Closes the UserService database connection
-func (ug *userGorm) Close() error {
-	return ug.db.Close()
-}
-
 // first will query using the provided gorm.DB and it will
 // get the first item returned and place it into dst. If
 // nothing is found in the query, it will return ErrNotFound
@@ -226,23 +200,6 @@ func first(db *gorm.DB, dst interface{}) error {
 		return ErrNotFound
 	}
 	return err
-}
-
-// AutoMigrate will attempt to automatically migrate the
-// users table
-func (ug *userGorm) AutoMigrate() error {
-	if err := ug.db.AutoMigrate(&User{}).Error; err != nil {
-		return err
-	}
-	return nil
-}
-
-func (ug *userGorm) DestructiveReset() error {
-	err := ug.db.DropTableIfExists(&User{}).Error
-	if err != nil {
-		return err
-	}
-	return ug.AutoMigrate()
 }
 
 // Authenticate can be used to authenticate a user with the
