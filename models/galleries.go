@@ -7,36 +7,12 @@ const (
 	ErrTitleRequired  modelError = "models: title is required"
 )
 
+// Gallery represents the galleries table in our DB
+// and is mostly a container resource composed of images.
 type Gallery struct {
 	gorm.Model
 	UserID uint   `gorm:"not_null;index"`
 	Title  string `gorm:"not_null"`
-}
-
-type GalleryService interface {
-	GalleryDB
-}
-
-type GalleryDB interface {
-	Create(gallery *Gallery) error
-}
-
-type galleryService struct {
-	GalleryDB
-}
-
-type galleryValidator struct {
-	GalleryDB
-}
-
-type galleryGorm struct {
-	db *gorm.DB
-}
-
-var _ GalleryDB = &galleryGorm{}
-
-func (gg *galleryGorm) Create(gallery *Gallery) error {
-	return gg.db.Create(gallery).Error
 }
 
 func NewGalleryService(db *gorm.DB) GalleryService {
@@ -49,15 +25,40 @@ func NewGalleryService(db *gorm.DB) GalleryService {
 	}
 }
 
-type galleryValFn func(*Gallery) error
+type GalleryService interface {
+	GalleryDB
+}
 
-func runGalleryValFns(gallery *Gallery, fns ...galleryValFn) error {
-	for _, fn := range fns {
-		if err := fn(gallery); err != nil {
-			return err
-		}
+type galleryService struct {
+	GalleryDB
+}
+
+type GalleryDB interface {
+	Create(gallery *Gallery) error
+}
+
+type galleryValidator struct {
+	GalleryDB
+}
+
+func (gv *galleryValidator) Create(gallery *Gallery) error {
+	err := runGalleryValFns(gallery,
+		gv.userIDRequired,
+		gv.titleRequired)
+	if err != nil {
+		return err
 	}
-	return nil
+	return gv.GalleryDB.Create(gallery)
+}
+
+var _ GalleryDB = &galleryGorm{}
+
+type galleryGorm struct {
+	db *gorm.DB
+}
+
+func (gg *galleryGorm) Create(gallery *Gallery) error {
+	return gg.db.Create(gallery).Error
 }
 
 func (gv *galleryValidator) userIDRequired(g *Gallery) error {
@@ -74,10 +75,13 @@ func (gv *galleryValidator) titleRequired(g *Gallery) error {
 	return nil
 }
 
-func (gv *galleryValidator) Create(gallery *Gallery) error {
-	err := runGalleryValFns(gallery, gv.userIDRequired, gv.titleRequired)
-	if err != nil {
-		return err
+type galleryValFn func(*Gallery) error
+
+func runGalleryValFns(gallery *Gallery, fns ...galleryValFn) error {
+	for _, fn := range fns {
+		if err := fn(gallery); err != nil {
+			return err
+		}
 	}
-	return gv.GalleryDB.Create(gallery)
+	return nil
 }

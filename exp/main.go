@@ -2,28 +2,34 @@ package main
 
 import (
 	"fmt"
-	_ "github.com/lib/pq"
-	"sinistra/lenslocked.com/models"
+
+	"lenslocked.com/models"
 )
 
 const (
 	host     = "localhost"
 	port     = 5432
-	user     = "postgres"
-	password = "mysecretpassword"
-	dbname   = "lenslocked"
+	user     = "jon"
+	password = "your-password"
+	dbname   = "lenslocked_dev"
 )
 
 func main() {
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+"password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+		"password=%s dbname=%s sslmode=disable",
+		host, port, user, password, dbname)
 	us, err := models.NewUserService(psqlInfo)
 	if err != nil {
 		panic(err)
 	}
 	defer us.Close()
 	us.DestructiveReset()
-	user := models.User{Name: "Michael Scott",
-		Email: "michael@dundermifflin.com", Password: "bestboss"}
+
+	user := models.User{
+		Name:     "Michael Scott",
+		Email:    "michael@dundermifflin.com",
+		Password: "bestboss",
+	}
 	err = us.Create(&user)
 	if err != nil {
 		panic(err)
@@ -33,6 +39,7 @@ func main() {
 	if user.Remember == "" {
 		panic("Invalid remember token")
 	}
+
 	// Now verify that we can lookup a user with that remember
 	// token
 	user2, err := us.ByRemember(user.Remember)

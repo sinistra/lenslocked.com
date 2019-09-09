@@ -5,6 +5,7 @@ import (
 	"github.com/gorilla/mux"
 	"net/http"
 	"sinistra/lenslocked.com/controllers"
+	"sinistra/lenslocked.com/middleware"
 	"sinistra/lenslocked.com/models"
 )
 
@@ -50,10 +51,12 @@ func main() {
 	usersC := controllers.NewUsers(services.User)
 	galleriesC := controllers.NewGalleries(services.Gallery)
 
+	requireUserMw := middleware.RequireUser{UserService: services.User}
+
 	r := mux.NewRouter()
 	r.Handle("/", staticC.Home).Methods("GET")
 	r.Handle("/contact", staticC.Contact).Methods("GET")
-	r.Handle("/faq", staticC.Faq).Methods("GET")
+	//r.Handle("/faq", staticC.Faq).Methods("GET")
 	r.HandleFunc("/signup", usersC.New).Methods("GET")
 	r.HandleFunc("/signup", usersC.Create).Methods("POST")
 	// NOTE: We are using the Handle function, not HandleFunc
@@ -61,8 +64,12 @@ func main() {
 	r.HandleFunc("/login", usersC.Login).Methods("POST")
 	r.HandleFunc("/cookietest", usersC.CookieTest).Methods("GET")
 	// Gallery routes
-	r.Handle("/galleries/new", galleriesC.New).Methods("GET")
-	r.HandleFunc("/galleries", galleriesC.Create).Methods("POST")
+	// galleriesC.New is an http.Handler, so we use Apply
+	newGallery := requireUserMw.Apply(galleriesC.New)
+	// galleriecsC.Create is an http.HandlerFunc, so we use ApplyFn
+	createGallery := requireUserMw.ApplyFn(galleriesC.Create)
+	r.Handle("/galleries/new", newGallery).Methods("GET")
+	r.HandleFunc("/galleries", createGallery).Methods("POST")
 
 	var h http.Handler = http.HandlerFunc(fourofour)
 	r.NotFoundHandler = h

@@ -20,8 +20,7 @@ func Bytes(n int) ([]byte, error) {
 	return b, nil
 }
 
-// String will generate a byte slice of size nBytes and then
-// return a string that is the base64 URL encoded version
+// String will generate a byte slice of size nBytes and then // return a string that is the base64 URL encoded version
 // of that byte slice
 func String(nBytes int) (string, error) {
 	b, err := Bytes(nBytes)
@@ -31,8 +30,7 @@ func String(nBytes int) (string, error) {
 	return base64.URLEncoding.EncodeToString(b), nil
 }
 
-// RememberToken is a helper function designed to generate
-// remember tokens of a predetermined byte size.
+// RememberToken is a helper function designed to generate // remember tokens of a predetermined byte size.
 func RememberToken() (string, error) {
 	return String(RememberTokenBytes)
 }

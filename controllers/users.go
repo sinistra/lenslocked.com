@@ -8,18 +8,6 @@ import (
 	"sinistra/lenslocked.com/views"
 )
 
-type Users struct {
-	NewView   *views.View
-	LoginView *views.View
-	us        models.UserService
-}
-
-type SignupForm struct {
-	Name     string `schema:"name"`
-	Email    string `schema:"email"`
-	Password string `schema:"password"`
-}
-
 func NewUsers(us models.UserService) *Users {
 	return &Users{
 		NewView:   views.NewView("bootstrap", "users/new"),
@@ -28,12 +16,24 @@ func NewUsers(us models.UserService) *Users {
 	}
 }
 
+type Users struct {
+	NewView   *views.View
+	LoginView *views.View
+	us        models.UserService
+}
+
 // New is used to render the form where a user can
 // create a new user account.
 //
 // GET /signup
 func (u *Users) New(w http.ResponseWriter, r *http.Request) {
 	u.NewView.Render(w, nil)
+}
+
+type SignupForm struct {
+	Name     string `schema:"name"`
+	Email    string `schema:"email"`
+	Password string `schema:"password"`
 }
 
 // Create is used to process the signup form when a user
@@ -48,6 +48,7 @@ func (u *Users) Create(w http.ResponseWriter, r *http.Request) {
 		u.NewView.Render(w, vd)
 		return
 	}
+
 	user := models.User{
 		Name:     form.Name,
 		Email:    form.Email,
@@ -58,11 +59,14 @@ func (u *Users) Create(w http.ResponseWriter, r *http.Request) {
 		u.NewView.Render(w, vd)
 		return
 	}
+
 	err := u.signIn(w, &user)
 	if err != nil {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
+
+	// Redirect to the cookie test page to test the cookie
 	http.Redirect(w, r, "/cookietest", http.StatusFound)
 }
 
@@ -83,7 +87,6 @@ func (u *Users) Login(w http.ResponseWriter, r *http.Request) {
 		u.LoginView.Render(w, vd)
 		return
 	}
-
 	user, err := u.us.Authenticate(form.Email, form.Password)
 	if err != nil {
 		switch err {
@@ -95,6 +98,7 @@ func (u *Users) Login(w http.ResponseWriter, r *http.Request) {
 		u.LoginView.Render(w, vd)
 		return
 	}
+
 	err = u.signIn(w, user)
 	if err != nil {
 		vd.SetAlert(err)
