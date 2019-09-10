@@ -70,6 +70,7 @@ func main() {
 	createGallery := requireUserMw.ApplyFn(galleriesC.Create)
 	r.Handle("/galleries/new", newGallery).Methods("GET")
 	r.HandleFunc("/galleries", createGallery).Methods("POST")
+	r.HandleFunc("/galleries/{id:[0-9]+}", galleriesC.Show).Methods("GET")
 
 	var h http.Handler = http.HandlerFunc(fourofour)
 	r.NotFoundHandler = h
