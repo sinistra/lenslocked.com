@@ -35,6 +35,7 @@ type galleryService struct {
 
 type GalleryDB interface {
 	ByID(id uint) (*Gallery, error)
+	ByUserID(userID uint) ([]Gallery, error)
 	Create(gallery *Gallery) error
 	Update(gallery *Gallery) error
 	Delete(id uint) error
@@ -80,6 +81,20 @@ func (gg *galleryGorm) ByID(id uint) (*Gallery, error) {
 		return nil, err
 	}
 	return &gallery, nil
+}
+
+func (gg *galleryGorm) ByUserID(userID uint) ([]Gallery, error) {
+	var galleries []Gallery
+	// We build this query *exactly* the same way we build
+	// a query for a single user.
+	db := gg.db.Where("user_id = ?", userID)
+	// The real difference is in using Find instead of First
+	// and passing in a slice instead of a single gallery as
+	// the argument.
+	if err := db.Find(&galleries).Error; err != nil {
+		return nil, err
+	}
+	return galleries, nil
 }
 
 func (gg *galleryGorm) Update(gallery *Gallery) error {

@@ -53,9 +53,11 @@ func main() {
 	usersC := controllers.NewUsers(services.User)
 	galleriesC := controllers.NewGalleries(services.Gallery, r)
 
-	requireUserMw := middleware.RequireUser{
+	userMw := middleware.User{
 		UserService: services.User,
 	}
+
+	requireUserMw := middleware.RequireUser{}
 
 	r.Handle("/", staticC.Home).Methods("GET")
 	r.Handle("/contact", staticC.Contact).Methods("GET")
@@ -73,18 +75,28 @@ func main() {
 	createGallery := requireUserMw.ApplyFn(galleriesC.Create)
 	r.Handle("/galleries/new", newGallery).Methods("GET")
 	r.HandleFunc("/galleries", createGallery).Methods("POST")
-	r.HandleFunc("/galleries/{id:[0-9]+}", galleriesC.Show).
-		Methods("GET").Name(controllers.ShowGallery)
+	r.HandleFunc("/galleries/{id:[0-9]+}",
+		galleriesC.Show).
+		Methods("GET").
+		Name(controllers.ShowGallery)
 	r.HandleFunc("/galleries/{id:[0-9]+}/edit",
-		requireUserMw.ApplyFn(galleriesC.Edit)).Methods("GET")
+		requireUserMw.ApplyFn(galleriesC.Edit)).
+		Methods("GET").
+		Name(controllers.EditGallery)
 	r.HandleFunc("/galleries/{id:[0-9]+}/update",
-		requireUserMw.ApplyFn(galleriesC.Update)).Methods("POST")
+		requireUserMw.ApplyFn(galleriesC.Update)).
+		Methods("POST")
 	r.HandleFunc("/galleries/{id:[0-9]+}/delete",
-		requireUserMw.ApplyFn(galleriesC.Delete)).Methods("POST")
+		requireUserMw.ApplyFn(galleriesC.Delete)).
+		Methods("POST")
+	r.Handle("/galleries",
+		requireUserMw.ApplyFn(galleriesC.Index)).
+		Methods("GET").
+		Name(controllers.IndexGalleries)
 
 	var h http.Handler = http.HandlerFunc(fourofour)
 	r.NotFoundHandler = h
 
 	fmt.Println("Server running on port " + httpport)
-	http.ListenAndServe(httpport, r)
+	http.ListenAndServe(httpport, userMw.Apply(r))
 }
