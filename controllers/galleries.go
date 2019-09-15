@@ -1,18 +1,25 @@
 package controllers
 
 import (
-	"github.com/gorilla/mux"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sinistra/lenslocked.com/context"
 	"sinistra/lenslocked.com/models"
 	"sinistra/lenslocked.com/views"
 	"strconv"
+
+	"github.com/gorilla/mux"
 )
 
 const (
 	IndexGalleries = "index_galleries"
 	ShowGallery    = "show_gallery"
 	EditGallery    = "edit_gallery"
+
+	maxMultipartMem = 1 << 20 // 1 megabyte
 )
 
 func NewGalleries(gs models.GalleryService, r *mux.Router) *Galleries {
@@ -52,6 +59,133 @@ func (g *Galleries) Index(w http.ResponseWriter, r *http.Request) {
 	g.IndexView.Render(w, r, vd)
 }
 
+// GET /galleries/:id
+func (g *Galleries) Show(w http.ResponseWriter, r *http.Request) {
+	gallery, err := g.galleryByID(w, r)
+	if err != nil {
+		return
+	}
+	var vd views.Data
+	vd.Yield = gallery
+	g.ShowView.Render(w, r, vd)
+}
+
+// GET /galleries/:id/edit
+func (g *Galleries) Edit(w http.ResponseWriter, r *http.Request) {
+	gallery, err := g.galleryByID(w, r)
+	if err != nil {
+		return
+	}
+	user := context.User(r.Context())
+	if gallery.UserID != user.ID {
+		http.Error(w, "You do not have permission to edit this gallery", http.StatusForbidden)
+		return
+	}
+	var vd views.Data
+	vd.Yield = gallery
+	g.EditView.Render(w, r, vd)
+}
+
+// POST /galleries/:id/update
+func (g *Galleries) Update(w http.ResponseWriter, r *http.Request) {
+	gallery, err := g.galleryByID(w, r)
+	if err != nil {
+		return
+	}
+	user := context.User(r.Context())
+	if gallery.UserID != user.ID {
+		http.Error(w, "Gallery not found", http.StatusNotFound)
+		return
+	}
+	var vd views.Data
+	vd.Yield = gallery
+	var form GalleryForm
+	if err := parseForm(r, &form); err != nil {
+		vd.SetAlert(err)
+		g.EditView.Render(w, r, vd)
+		return
+	}
+	gallery.Title = form.Title
+	err = g.gs.Update(gallery)
+	if err != nil {
+		vd.SetAlert(err)
+	} else {
+		vd.Alert = &views.Alert{
+			Level:   views.AlertLvlSuccess,
+			Message: "Gallery successfully updated!",
+		}
+	}
+	g.EditView.Render(w, r, vd)
+}
+
+// POST /galleries/:id/images
+func (g *Galleries) ImageUpload(w http.ResponseWriter, r *http.Request) {
+	gallery, err := g.galleryByID(w, r)
+	if err != nil {
+		return
+	}
+	user := context.User(r.Context())
+	if gallery.UserID != user.ID {
+		http.Error(w, "Gallery not found", http.StatusNotFound)
+		return
+	}
+
+	var vd views.Data
+	vd.Yield = gallery
+	err = r.ParseMultipartForm(maxMultipartMem)
+	if err != nil {
+		vd.SetAlert(err)
+		g.EditView.Render(w, r, vd)
+		return
+	}
+
+	// Create the directory to contain our images
+	galleryPath := filepath.Join("images", "galleries",
+		fmt.Sprintf("%v", gallery.ID))
+	err = os.MkdirAll(galleryPath, 0755)
+	if err != nil {
+		vd.SetAlert(err)
+		g.EditView.Render(w, r, vd)
+		return
+	}
+
+	// Iterate over uploaded files to process them.
+	files := r.MultipartForm.File["images"]
+	for _, f := range files {
+		// Open the uploaded file
+		file, err := f.Open()
+		if err != nil {
+			vd.SetAlert(err)
+			g.EditView.Render(w, r, vd)
+			return
+		}
+		defer file.Close()
+
+		// Create a destination file
+		dst, err := os.Create(filepath.Join(galleryPath, f.Filename))
+		if err != nil {
+			vd.SetAlert(err)
+			g.EditView.Render(w, r, vd)
+			return
+		}
+		defer dst.Close()
+
+		// Copy uploaded file data to the destination file
+		_, err = io.Copy(dst, file)
+		if err != nil {
+			vd.SetAlert(err)
+			g.EditView.Render(w, r, vd)
+			return
+		}
+	}
+
+	vd.Alert = &views.Alert{
+		Level:   views.AlertLvlSuccess,
+		Message: "Images successfully uploaded!",
+	}
+	g.EditView.Render(w, r, vd)
+}
+
 // POST /galleries
 func (g *Galleries) Create(w http.ResponseWriter, r *http.Request) {
 	var vd views.Data
@@ -61,7 +195,6 @@ func (g *Galleries) Create(w http.ResponseWriter, r *http.Request) {
 		g.New.Render(w, r, vd)
 		return
 	}
-
 	user := context.User(r.Context())
 	gallery := models.Gallery{
 		Title:  form.Title,
@@ -72,35 +205,53 @@ func (g *Galleries) Create(w http.ResponseWriter, r *http.Request) {
 		g.New.Render(w, r, vd)
 		return
 	}
-	url, err := g.r.Get(EditGallery).URL("id", strconv.Itoa(int(gallery.ID)))
 
-	// Check for errors creating the URL
+	url, err := g.r.Get(EditGallery).URL("id",
+		strconv.Itoa(int(gallery.ID)))
 	if err != nil {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
-	// If no errors, use the URL we just created and redirect
-	// to the path portion of that URL. We don't need the
-	// entire URL because your application might be hosted at
-	// localhost:3000, or it might be at lenslocked.com. By
-	// only using the path our code is agnostic to that detail.
 	http.Redirect(w, r, url.Path, http.StatusFound)
 }
 
-// GET /galleries/:id
-func (g *Galleries) Show(w http.ResponseWriter, r *http.Request) {
+// POST /galleries/:id/delete
+func (g *Galleries) Delete(w http.ResponseWriter, r *http.Request) {
 	gallery, err := g.galleryByID(w, r)
 	if err != nil {
-		// The galleryByID method will already render the error
-		// for us, so we just need to return here.
+		return
+	}
+	user := context.User(r.Context())
+	if gallery.UserID != user.ID {
+		http.Error(w, "You do not have permission to edit "+
+			"this gallery", http.StatusForbidden)
 		return
 	}
 	var vd views.Data
-	vd.Yield = gallery
-	g.ShowView.Render(w, r, vd)
+	err = g.gs.Delete(gallery.ID)
+	if err != nil {
+		vd.SetAlert(err)
+		vd.Yield = gallery
+		g.EditView.Render(w, r, vd)
+		return
+	}
+	url, err := g.r.Get(IndexGalleries).URL()
+	if err != nil {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+	http.Redirect(w, r, url.Path, http.StatusFound)
 }
 
-func (g *Galleries) galleryByID(w http.ResponseWriter, r *http.Request) (*models.Gallery, error) {
+// galleryByID will parse the "id" variable from the
+// request path using gorilla/mux and then use that ID to
+// retrieve the gallery from the GalleryService
+//
+// galleryByID will return an error if one occurs, but it
+// will also render the error with an http.Error function
+// call, so you do not need to.
+func (g *Galleries) galleryByID(w http.ResponseWriter,
+	r *http.Request) (*models.Gallery, error) {
 	vars := mux.Vars(r)
 	idStr := vars["id"]
 	id, err := strconv.Atoi(idStr)
@@ -119,101 +270,4 @@ func (g *Galleries) galleryByID(w http.ResponseWriter, r *http.Request) (*models
 		return nil, err
 	}
 	return gallery, nil
-}
-
-// GET /galleries/:id/edit
-func (g *Galleries) Edit(w http.ResponseWriter, r *http.Request) {
-	gallery, err := g.galleryByID(w, r)
-	if err != nil {
-		// The galleryByID method will already render the error
-		// for us, so we just need to return here.
-		return
-	}
-	// A user needs logged in to access this page, so we can
-	// assume that the RequireUser middleware has run and
-	// set the user for us in the request context.
-	user := context.User(r.Context())
-	if gallery.UserID != user.ID {
-		http.Error(w, "You do not have permission to edit this gallery", http.StatusForbidden)
-		return
-	}
-	var vd views.Data
-	vd.Yield = gallery
-	g.EditView.Render(w, r, vd)
-}
-
-func (g *Galleries) Update(w http.ResponseWriter, r *http.Request) {
-	gallery, err := g.galleryByID(w, r)
-	if err != nil {
-		return
-	}
-	user := context.User(r.Context())
-	if gallery.UserID != user.ID {
-		http.Error(w, "Gallery not found", http.StatusNotFound)
-		return
-	}
-	var vd views.Data
-	vd.Yield = gallery
-	var form GalleryForm
-	if err := parseForm(r, &form); err != nil {
-		// If there is an error we are going to render the
-		// EditView again with an alert message.
-		vd.SetAlert(err)
-		g.EditView.Render(w, r, vd)
-		return
-	}
-	gallery.Title = form.Title
-	err = g.gs.Update(gallery)
-	// If there is an error our alert will be an error. Otherwise
-	// we will still render an alert, but instead it will be
-	// a success message.
-	if err != nil {
-		vd.SetAlert(err)
-	} else {
-		vd.Alert = &views.Alert{
-			Level:   views.AlertLvlSuccess,
-			Message: "Gallery successfully updated!",
-		}
-	}
-	// Error or not, we are going to render the EditView with
-	// our updated information.
-	g.EditView.Render(w, r, vd)
-}
-
-func (g *Galleries) Delete(w http.ResponseWriter, r *http.Request) {
-	// Lookup the gallery using the galleryByID we wrote earlier
-	gallery, err := g.galleryByID(w, r)
-	if err != nil {
-		// If there is an error the galleryByID will have rendered
-		// it for us already.
-		return
-	}
-	// We also need to retrieve the user and verify they have
-	// permission to delete this gallery. This means we will
-	// need to use the RequireUser middleware on any routes
-	// mapped to this method.
-	user := context.User(r.Context())
-	if gallery.UserID != user.ID {
-		http.Error(w, "You do not have permission to edit this gallery",
-			http.StatusForbidden)
-		return
-	}
-	var vd views.Data
-	err = g.gs.Delete(gallery.ID)
-	if err != nil {
-		// If there is an error we want to set an alert and
-		// render the edit page with the error. We also need
-		// to set the Yield to gallery so that the EditView
-		// is rendered correctly.
-		vd.SetAlert(err)
-		vd.Yield = gallery
-		g.EditView.Render(w, r, vd)
-		return
-	}
-	url, err := g.r.Get(IndexGalleries).URL()
-	if err != nil {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-	http.Redirect(w, r, url.Path, http.StatusFound)
 }
