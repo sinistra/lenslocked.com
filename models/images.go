@@ -9,7 +9,13 @@ import (
 
 type ImageService interface {
 	Create(galleryID uint, r io.Reader, filename string) error
-	ByGalleryID(galleryID uint) ([]string, error)
+	ByGalleryID(galleryID uint) ([]Image, error)
+	Delete(i *Image) error
+}
+
+type Image struct {
+	GalleryID uint
+	Filename  string
 }
 
 func NewImageService() ImageService {
@@ -37,16 +43,18 @@ func (is *imageService) Create(galleryID uint, r io.Reader, filename string) err
 	return nil
 }
 
-func (is *imageService) ByGalleryID(galleryID uint) ([]string, error) {
+func (is *imageService) ByGalleryID(galleryID uint) ([]Image, error) {
 	path := is.imagePath(galleryID)
 	strings, err := filepath.Glob(filepath.Join(path, "*"))
 	if err != nil {
 		return nil, err
 	}
-	for i := range strings {
-		strings[i] = "/" + strings[i]
+	// Setup the Image slice we are returning
+	ret := make([]Image, len(strings))
+	for i, imgStr := range strings {
+		ret[i] = Image{Filename: filepath.Base(imgStr), GalleryID: galleryID}
 	}
-	return strings, nil
+	return ret, nil
 }
 
 // Going to need this when we know it is already made
@@ -63,4 +71,22 @@ func (is *imageService) mkImagePath(galleryID uint) (string, error) {
 		return "", err
 	}
 	return galleryPath, nil
+}
+
+// Path is used to build the absolute path used to reference this image
+// via a web request.
+func (i *Image) Path() string {
+	return "/" + i.RelativePath()
+}
+
+// RelativePath is used to build the path to this image on our local
+// disk, relative to where our Go application is run from.
+func (i *Image) RelativePath() string {
+	// Convert the gallery ID to a string
+	galleryID := fmt.Sprintf("%v", i.GalleryID)
+	return filepath.ToSlash(filepath.Join("images", "galleries", galleryID, i.Filename))
+}
+
+func (is *imageService) Delete(i *Image) error {
+	return os.Remove(i.RelativePath())
 }
