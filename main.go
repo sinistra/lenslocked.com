@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"github.com/gorilla/csrf"
 	"github.com/gorilla/mux"
 	"net/http"
 	"sinistra/lenslocked.com/controllers"
 	"sinistra/lenslocked.com/middleware"
 	"sinistra/lenslocked.com/models"
+	"sinistra/lenslocked.com/rand"
 )
 
 var httpport = ":3001"
@@ -36,11 +38,9 @@ func fourofour(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 
-	// Create a DB connection string and then use it to
-	// create our model services.
-	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+"password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
-
-	services, err := models.NewServices(psqlInfo)
+	cfg := DefaultConfig()
+	dbCfg := DefaultPostgresConfig()
+	services, err := models.NewServices(dbCfg.Dialect(), dbCfg.ConnectionInfo())
 	if err != nil {
 		panic(err)
 	}
@@ -103,9 +103,19 @@ func main() {
 	// Image routes
 	imageHandler := http.FileServer(http.Dir("./images/"))
 	r.PathPrefix("/images/").Handler(http.StripPrefix("/images/", imageHandler))
+
+	assetHandler := http.FileServer(http.Dir("./public/"))
+	r.PathPrefix("/assets/").Handler(assetHandler)
+
 	var h http.Handler = http.HandlerFunc(fourofour)
 	r.NotFoundHandler = h
 
+	b, err := rand.Bytes(32)
+	if err != nil {
+		panic(err)
+	}
+	csrfMw := csrf.Protect(b, csrf.Secure(cfg.IsProd()))
+
 	fmt.Println("Server running on port " + httpport)
-	http.ListenAndServe(httpport, userMw.Apply(r))
+	http.ListenAndServe(httpport, csrfMw(userMw.Apply(r)))
 }

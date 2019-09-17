@@ -1,19 +1,20 @@
 {{define "bootstrap"}}
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <title>LensLocked.com</title>
-    <link href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
-  </head>
-  <body>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <title>LensLocked.com</title>
+        <link href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+        <link href="/assets/styles.css" rel="stylesheet">
+    </head>
+    <body>
     {{template "navbar" .}}
 
     <div class="container-fluid">
-      {{if .Alert}}
-        {{template "alert" .Alert}}
-      {{end}}
-      {{template "yield" .Yield}}
-      {{template "footer"}}
+        {{if .Alert}}
+            {{template "alert" .Alert}}
+        {{end}}
+        {{template "yield" .Yield}}
+        {{template "footer"}}
     </div>
 
     <!-- jquery & Bootstrap JS -->
@@ -21,6 +22,6 @@
     </script>
     <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js">
     </script>
-  </body>
-</html>
+    </body>
+    </html>
 {{end}}
