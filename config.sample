@@ -9,5 +9,10 @@
     "user": "jon",
     "password": "your-password",
     "name": "lenslocked_dev"
+  },
+  "mailgun": {
+    "api_key": "your-api-key",
+    "public_api_key": "your-public-key",
+    "domain": "your-domain-setup-with-mailgun"
   }
 }
