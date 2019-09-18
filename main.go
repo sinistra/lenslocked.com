@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/gorilla/csrf"
 	"github.com/gorilla/mux"
@@ -11,17 +12,6 @@ import (
 	"sinistra/lenslocked.com/rand"
 )
 
-var httpport = ":3001"
-
-const (
-	host     = "localhost"
-	port     = 5432
-	user     = "postgres"
-	password = "mysecretpassword"
-	dbname   = "lenslocked"
-)
-
-// A helper function that panics on any error
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -37,8 +27,11 @@ func fourofour(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-
-	cfg := DefaultConfig()
+	boolPtr := flag.Bool("prod", false, "Provide this flag "+
+		"in production. This ensures that a .config file is "+
+		"provided before the application starts.")
+	flag.Parse()
+	cfg := LoadConfig(*boolPtr)
 	dbCfg := DefaultPostgresConfig()
 
 	services, err := models.NewServices(
@@ -125,6 +118,7 @@ func main() {
 	}
 	csrfMw := csrf.Protect(b, csrf.Secure(cfg.IsProd()))
 
-	fmt.Println("Server running on port " + httpport)
-	http.ListenAndServe(httpport, csrfMw(userMw.Apply(r)))
+	fmt.Printf("Starting the server on :%d...\n", cfg.Port)
+	http.ListenAndServe(fmt.Sprintf(":%d", cfg.Port), csrfMw(userMw.Apply(r)))
+
 }
