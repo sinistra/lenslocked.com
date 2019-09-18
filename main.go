@@ -21,7 +21,7 @@ const (
 	dbname   = "lenslocked"
 )
 
-//A helper function that panics on any error
+// A helper function that panics on any error
 func must(err error) {
 	if err != nil {
 		panic(err)
@@ -40,7 +40,16 @@ func main() {
 
 	cfg := DefaultConfig()
 	dbCfg := DefaultPostgresConfig()
-	services, err := models.NewServices(dbCfg.Dialect(), dbCfg.ConnectionInfo())
+
+	services, err := models.NewServices(
+		models.WithGorm(dbCfg.Dialect(), dbCfg.ConnectionInfo()),
+		// Only log when not in prod
+		models.WithLogMode(!cfg.IsProd()),
+		models.WithUser(cfg.Pepper, cfg.HMACKey),
+		models.WithGallery(),
+		models.WithImage(),
+	)
+
 	if err != nil {
 		panic(err)
 	}
