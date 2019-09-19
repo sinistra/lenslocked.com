@@ -22,25 +22,18 @@ func NewView(layout string, files ...string) *View {
 	addTemplatePath(files)
 	addTemplateExt(files)
 	files = append(files, layoutFiles()...)
-	// We are changing how we create our templates, calling
-	// New("") to give us a template that we can add a function to
-	// before finally passing in files to parse as part of the template.
 	t, err := template.New("").Funcs(template.FuncMap{
 		"csrfField": func() (template.HTML, error) {
-			// If this is called without being replace with a proper implementation
-			// returning an error as the second argument will cause our template
-			// package to return an error when executed.
 			return "", errors.New("csrfField is not implemented")
 		},
 		"pathEscape": func(s string) string {
 			return url.PathEscape(s)
 		},
-		// Once we have our template with a function we are going to pass in files
-		// to parse, much like we were previously.
 	}).ParseFiles(files...)
 	if err != nil {
 		panic(err)
 	}
+
 	return &View{
 		Template: t,
 		Layout:   layout,
@@ -63,31 +56,23 @@ func (v *View) Render(w http.ResponseWriter, r *http.Request, data interface{}) 
 			Yield: data,
 		}
 	}
-
-	// Lookup the alter and assign it if one is persisted
 	if alert := getAlert(r); alert != nil {
 		vd.Alert = alert
 		clearAlert(w)
 	}
 	vd.User = context.User(r.Context())
 	var buf bytes.Buffer
-
-	// We need to create the csrfField using the current http request.
 	csrfField := csrf.TemplateField(r)
 	tpl := v.Template.Funcs(template.FuncMap{
-		// We can also change the return type of our function, since we no longer
-		// need to worry about errors.
 		"csrfField": func() template.HTML {
-			// We can then create this closure that returns the csrfField for
-			// any templates that need access to it.
 			return csrfField
 		},
 	})
-	// Then we continue to execute the template just like before.
 	err := tpl.ExecuteTemplate(&buf, v.Layout, vd)
 	if err != nil {
 		http.Error(w, "Something went wrong. If the problem "+
-			"persists, please email support@lenslocked.com", http.StatusInternalServerError)
+			"persists, please email support@lenslocked.com",
+			http.StatusInternalServerError)
 		return
 	}
 	io.Copy(w, &buf)

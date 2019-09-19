@@ -1,15 +1,14 @@
 package models
 
 import (
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/postgres"
+	"golang.org/x/crypto/bcrypt"
 	"regexp"
 	"sinistra/lenslocked.com/hash"
 	"sinistra/lenslocked.com/rand"
 	"strings"
 	"time"
-
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
-	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -52,7 +51,8 @@ const (
 	// ErrRememberTooShort is returned when a remember token is
 	// not at least 32 bytes
 	ErrRememberTooShort modelError = "models: remember token must be at least 32 bytes"
-	ErrTokenInvalid     modelError = "models: token provided is not valid"
+
+	ErrTokenInvalid modelError = "models: token provided is not valid"
 )
 
 // UserDB is used to interact with the users database.
@@ -93,7 +93,16 @@ type User struct {
 // work with the user model
 type UserService interface {
 	Authenticate(email, password string) (*User, error)
+	// InitiateReset will complete all the model-related tasks
+	// to start the password reset process for the user with
+	// the provided email address. Once completed, it will
+	// return the token, or an error if there was one.
 	InitiateReset(email string) (string, error)
+	// CompleteReset will complete all the model-related tasks
+	// to complete the password reset process for the user that
+	// the token matches, including updating that user's pw.
+	// If the token has expired, or if it is invalid for any
+	// other reason the ErrTokenInvalid error will be returned.
 	CompleteReset(token, newPw string) (*User, error)
 	UserDB
 }
@@ -108,6 +117,8 @@ func NewUserService(db *gorm.DB, pepper, hmacKey string) UserService {
 		pwResetDB: newPwResetValidator(&pwResetGorm{db}, hmac),
 	}
 }
+
+var _ UserService = &userService{}
 
 type userService struct {
 	UserDB
@@ -157,7 +168,8 @@ func (us *userService) InitiateReset(email string) (string, error) {
 	return pwr.Token, nil
 }
 
-func (us *userService) CompleteReset(token, newPw string) (*User, error) {
+func (us *userService) CompleteReset(token,
+	newPw string) (*User, error) {
 	pwr, err := us.pwResetDB.ByToken(token)
 	if err != nil {
 		if err == ErrNotFound {

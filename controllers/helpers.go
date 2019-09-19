@@ -1,10 +1,18 @@
 package controllers
 
 import (
-	"github.com/gorilla/schema"
 	"net/http"
 	"net/url"
+
+	"github.com/gorilla/schema"
 )
+
+func parseURLParams(r *http.Request, dst interface{}) error {
+	if err := r.ParseForm(); err != nil {
+		return err
+	}
+	return parseValues(r.Form, dst)
+}
 
 func parseForm(r *http.Request, dst interface{}) error {
 	if err := r.ParseForm(); err != nil {
@@ -20,11 +28,4 @@ func parseValues(values url.Values, dst interface{}) error {
 		return err
 	}
 	return nil
-}
-
-func parseURLParams(r *http.Request, dst interface{}) error {
-	if err := r.ParseForm(); err != nil {
-		return err
-	}
-	return parseValues(r.Form, dst)
 }
