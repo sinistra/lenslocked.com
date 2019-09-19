@@ -5,6 +5,7 @@ import (
 	"sinistra/lenslocked.com/hash"
 	"sinistra/lenslocked.com/rand"
 	"strings"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
@@ -51,6 +52,7 @@ const (
 	// ErrRememberTooShort is returned when a remember token is
 	// not at least 32 bytes
 	ErrRememberTooShort modelError = "models: remember token must be at least 32 bytes"
+	ErrTokenInvalid     modelError = "models: token provided is not valid"
 )
 
 // UserDB is used to interact with the users database.
@@ -90,46 +92,27 @@ type User struct {
 // UserService is a set of methods used to manipulate and
 // work with the user model
 type UserService interface {
-	// Authenticate will verify the provided email address and
-	// password are correct. If they are correct, the user
-	// corresponding to that email will be returned. Otherwise
-	// You will receive either:
-	// ErrNotFound, ErrPasswordIncorrect, or another error if
-	// something goes wrong.
 	Authenticate(email, password string) (*User, error)
+	InitiateReset(email string) (string, error)
+	CompleteReset(token, newPw string) (*User, error)
 	UserDB
 }
-
-// func NewUserService(db *gorm.DB) UserService {
-// 	ug := &userGorm{db}
-// 	hmac := hash.NewHMAC(hmacSecretKey)
-// 	uv := newUserValidator(ug, hmac)
-// 	return &userService{
-// 		UserDB: uv,
-// 	}
-// }
-//
-// var _ UserService = &userService{}
-//
-// type userService struct {
-// 	UserDB
-// }
 
 func NewUserService(db *gorm.DB, pepper, hmacKey string) UserService {
 	ug := &userGorm{db}
 	hmac := hash.NewHMAC(hmacKey)
-	// This won't compile, but we will add the pepper param
-	// to the newUserValidator function shortly
 	uv := newUserValidator(ug, hmac, pepper)
 	return &userService{
-		UserDB: uv,
-		pepper: pepper,
+		UserDB:    uv,
+		pepper:    pepper,
+		pwResetDB: newPwResetValidator(&pwResetGorm{db}, hmac),
 	}
 }
 
 type userService struct {
 	UserDB
-	pepper string
+	pepper    string
+	pwResetDB pwResetDB
 }
 
 // Authenticate can be used to authenticate a user with the
@@ -158,6 +141,44 @@ func (us *userService) Authenticate(email, password string) (*User, error) {
 	default:
 		return nil, err
 	}
+}
+
+func (us *userService) InitiateReset(email string) (string, error) {
+	user, err := us.ByEmail(email)
+	if err != nil {
+		return "", err
+	}
+	pwr := pwReset{
+		UserID: user.ID,
+	}
+	if err := us.pwResetDB.Create(&pwr); err != nil {
+		return "", err
+	}
+	return pwr.Token, nil
+}
+
+func (us *userService) CompleteReset(token, newPw string) (*User, error) {
+	pwr, err := us.pwResetDB.ByToken(token)
+	if err != nil {
+		if err == ErrNotFound {
+			return nil, ErrTokenInvalid
+		}
+		return nil, err
+	}
+	if time.Now().Sub(pwr.CreatedAt) > (12 * time.Hour) {
+		return nil, ErrTokenInvalid
+	}
+	user, err := us.ByID(pwr.UserID)
+	if err != nil {
+		return nil, err
+	}
+	user.Password = newPw
+	err = us.Update(user)
+	if err != nil {
+		return nil, err
+	}
+	us.pwResetDB.Delete(pwr.ID)
+	return user, nil
 }
 
 var _ UserDB = &userGorm{}
