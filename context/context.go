@@ -5,11 +5,11 @@ import (
 	"sinistra/lenslocked.com/models"
 )
 
-type privateKey string
-
 const (
 	userKey privateKey = "user"
 )
+
+type privateKey string
 
 func WithUser(ctx context.Context, user *models.User) context.Context {
 	return context.WithValue(ctx, userKey, user)

@@ -1,6 +1,6 @@
 {{define "yield"}}
 <div class="row">
-  <div class="col-md-6 col-md-offset-3">
+  <div class="col-md-4 col-md-offset-4">
     <div class="panel panel-primary">
       <div class="panel-heading">
         <h3 class="panel-title">Welcome Back!</h3>
@@ -21,14 +21,11 @@
   {{csrfField}}
   <div class="form-group">
     <label for="email">Email address</label>
-    <input type="email" name="email" class="form-control"
-      id="email" placeholder="Email">
+    <input type="email" name="email" class="form-control" id="email" placeholder="Email">
   </div>
   <div class="form-group">
     <label for="password">Password</label>
-    <input type="password" name="password"
-      class="form-control" id="password"
-      placeholder="Password">
+    <input type="password" name="password" class="form-control" id="password" placeholder="Password">
   </div>
   <button type="submit" class="btn btn-primary">Log In</button>
 </form>

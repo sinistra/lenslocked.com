@@ -6,6 +6,7 @@
     <link href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
     <link href="/assets/styles.css" rel="stylesheet">
   </head>
+
   <body>
     {{template "navbar" .}}
 
@@ -14,6 +15,7 @@
         {{template "alert" .Alert}}
       {{end}}
       {{template "yield" .Yield}}
+
       {{template "footer"}}
     </div>
 

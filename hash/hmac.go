@@ -11,7 +11,8 @@ import (
 func NewHMAC(key string) HMAC {
 	h := hmac.New(sha256.New, []byte(key))
 	return HMAC{
-		hmac: h}
+		hmac: h,
+	}
 }
 
 // HMAC is a wrapper around the crypto/hmac package making

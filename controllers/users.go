@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"fmt"
 	"net/http"
 	"sinistra/lenslocked.com/context"
 	"sinistra/lenslocked.com/email"
@@ -11,6 +10,10 @@ import (
 	"time"
 )
 
+// NewUsers is used to create a new Users controller.
+// This function will panic if the templates are not
+// parsed correctly, and should only be used during
+// initial setup.
 func NewUsers(us models.UserService, emailer *email.Client) *Users {
 	return &Users{
 		NewView:      views.NewView("bootstrap", "users/new"),
@@ -48,7 +51,7 @@ type SignupForm struct {
 }
 
 // Create is used to process the signup form when a user
-// tries to create a new user account.
+// submits it. This is used to create a new user account.
 //
 // POST /signup
 func (u *Users) Create(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +63,6 @@ func (u *Users) Create(w http.ResponseWriter, r *http.Request) {
 		u.NewView.Render(w, r, vd)
 		return
 	}
-
 	user := models.User{
 		Name:     form.Name,
 		Email:    form.Email,
@@ -78,7 +80,11 @@ func (u *Users) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/galleries", http.StatusFound)
+	alert := views.Alert{
+		Level:   views.AlertLvlSuccess,
+		Message: "Welcome to LensLocked.com!",
+	}
+	views.RedirectAlert(w, r, "/galleries", http.StatusFound, alert)
 }
 
 type LoginForm struct {
@@ -86,23 +92,24 @@ type LoginForm struct {
 	Password string `schema:"password"`
 }
 
-// Login is used to process the login form when a user
-// tries to log in as an existing user (via email & pw).
+// Login is used to verify the provided email address and
+// password and then log the user in if they are correct.
 //
 // POST /login
 func (u *Users) Login(w http.ResponseWriter, r *http.Request) {
-	var vd views.Data
-	var form LoginForm
+	vd := views.Data{}
+	form := LoginForm{}
 	if err := parseForm(r, &form); err != nil {
 		vd.SetAlert(err)
 		u.LoginView.Render(w, r, vd)
 		return
 	}
+
 	user, err := u.us.Authenticate(form.Email, form.Password)
 	if err != nil {
 		switch err {
 		case models.ErrNotFound:
-			vd.AlertError("No user exists with that email address")
+			vd.AlertError("Invalid email address")
 		default:
 			vd.SetAlert(err)
 		}
@@ -116,16 +123,16 @@ func (u *Users) Login(w http.ResponseWriter, r *http.Request) {
 		u.LoginView.Render(w, r, vd)
 		return
 	}
+
 	http.Redirect(w, r, "/galleries", http.StatusFound)
 }
 
-// Logout is used to delete a user's session cookie
-// and invalidate their current remember token, which will
-// sign the current user out.
+// Logout is used to delete a users session cookie (remember_token)
+// and then will update the user resource with a new remmeber
+// token.
 //
 // POST /logout
 func (u *Users) Logout(w http.ResponseWriter, r *http.Request) {
-	// First expire the user's cookie
 	cookie := http.Cookie{
 		Name:     "remember_token",
 		Value:    "",
@@ -133,15 +140,11 @@ func (u *Users) Logout(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 	}
 	http.SetCookie(w, &cookie)
-	// Then we update the user with a new remember token
+
 	user := context.User(r.Context())
-	// We are ignoring errors for now because they are
-	// unlikely, and even if they do occur we can't recover
-	// now that the user doesn't have a valid cookie
 	token, _ := rand.RememberToken()
 	user.Remember = token
 	u.us.Update(user)
-	// Finally send the user to the home page
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
@@ -155,6 +158,7 @@ type ResetPwForm struct {
 
 // POST /forgot
 func (u *Users) InitiateReset(w http.ResponseWriter, r *http.Request) {
+	// TODO: Process the forgot password form and iniiate that process
 	var vd views.Data
 	var form ResetPwForm
 	vd.Yield = &form
@@ -226,21 +230,6 @@ func (u *Users) CompleteReset(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// CookieTest is used to display cookies set on the current user
-func (u *Users) CookieTest(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("remember_token")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	user, err := u.us.ByRemember(cookie.Value)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	fmt.Fprintln(w, user)
-}
-
 // signIn is used to sign the given user in via cookies
 func (u *Users) signIn(w http.ResponseWriter, user *models.User) error {
 	if user.Remember == "" {
@@ -254,6 +243,7 @@ func (u *Users) signIn(w http.ResponseWriter, user *models.User) error {
 			return err
 		}
 	}
+
 	cookie := http.Cookie{
 		Name:     "remember_token",
 		Value:    user.Remember,

@@ -59,6 +59,28 @@ func (pwrv *pwResetValidator) Delete(id uint) error {
 	return pwrv.pwResetDB.Delete(id)
 }
 
+type pwResetGorm struct {
+	db *gorm.DB
+}
+
+func (pwrg *pwResetGorm) ByToken(tokenHash string) (*pwReset, error) {
+	var pwr pwReset
+	err := first(pwrg.db.Where("token_hash = ?", tokenHash), &pwr)
+	if err != nil {
+		return nil, err
+	}
+	return &pwr, nil
+}
+
+func (pwrg *pwResetGorm) Create(pwr *pwReset) error {
+	return pwrg.db.Create(pwr).Error
+}
+
+func (pwrg *pwResetGorm) Delete(id uint) error {
+	pwr := pwReset{Model: gorm.Model{ID: id}}
+	return pwrg.db.Delete(&pwr).Error
+}
+
 func (pwrv *pwResetValidator) requireUserID(pwr *pwReset) error {
 	if pwr.UserID <= 0 {
 		return ErrUserIDRequired
@@ -95,26 +117,4 @@ func runPwResetValFns(pwr *pwReset, fns ...pwResetValFn) error {
 		}
 	}
 	return nil
-}
-
-type pwResetGorm struct {
-	db *gorm.DB
-}
-
-func (pwrg *pwResetGorm) ByToken(tokenHash string) (*pwReset, error) {
-	var pwr pwReset
-	err := first(pwrg.db.Where("token_hash = ?", tokenHash), &pwr)
-	if err != nil {
-		return nil, err
-	}
-	return &pwr, nil
-}
-
-func (pwrg *pwResetGorm) Create(pwr *pwReset) error {
-	return pwrg.db.Create(pwr).Error
-}
-
-func (pwrg *pwResetGorm) Delete(id uint) error {
-	pwr := pwReset{Model: gorm.Model{ID: id}}
-	return pwrg.db.Delete(&pwr).Error
 }

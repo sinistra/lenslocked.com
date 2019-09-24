@@ -1,6 +1,7 @@
 package views
 
 import (
+	"html/template"
 	"log"
 	"net/http"
 	"sinistra/lenslocked.com/models"
@@ -15,16 +16,37 @@ const (
 
 	// AlertMsgGeneric is displayed when any random error
 	// is encountered by our backend.
-	AlertMsgGeneric = "Something went wrong. Please try " +
-		"again, and contact us if the problem persists."
+	AlertMsgGeneric = "Something went wrong. Please try again, and contact us if the problem persists."
 )
+
+// Alert is used to render Bootstrap Alert messages in templates
+type Alert struct {
+	Level   string
+	Message string
+}
 
 // Data is the top level structure that views expect data
 // to come in.
 type Data struct {
 	Alert *Alert
 	User  *models.User
+	CSRF  template.HTML
 	Yield interface{}
+}
+
+func (d *Data) SetAlert(err error) {
+	if pErr, ok := err.(PublicError); ok {
+		d.Alert = &Alert{
+			Level:   AlertLvlError,
+			Message: pErr.Public(),
+		}
+	} else {
+		log.Println(err)
+		d.Alert = &Alert{
+			Level:   AlertLvlError,
+			Message: AlertMsgGeneric,
+		}
+	}
 }
 
 func (d *Data) AlertError(msg string) {
@@ -34,44 +56,12 @@ func (d *Data) AlertError(msg string) {
 	}
 }
 
-func (d *Data) SetAlert(err error) {
-	var msg string
-	if pErr, ok := err.(PublicError); ok {
-		msg = pErr.Public()
-	} else {
-		log.Println(err)
-		msg = AlertMsgGeneric
-	}
-	d.Alert = &Alert{
-		Level:   AlertLvlError,
-		Message: msg,
-	}
-}
-
-// Alert is used to render Bootstrap Alert messages in templates
-type Alert struct {
-	Level   string
-	Message string
-}
-
 type PublicError interface {
 	error
 	Public() string
 }
 
-// RedirectAlert accepts all the normal params for an
-// http.Redirect and performs a redirect, but only after
-// persisting the provided alert in a cookie so that it can
-// be displayed when the new page is loaded.
-func RedirectAlert(w http.ResponseWriter, r *http.Request, urlStr string, code int, alert Alert) {
-	persistAlert(w, alert)
-	http.Redirect(w, r, urlStr, code)
-}
-
 func persistAlert(w http.ResponseWriter, alert Alert) {
-	// We don't want alerts showing up days later. If the
-	// user doesnt load the redirect in 5 minutes we will
-	// just expire it.
 	expiresAt := time.Now().Add(5 * time.Minute)
 	lvl := http.Cookie{
 		Name:     "alert_level",
@@ -107,8 +97,6 @@ func clearAlert(w http.ResponseWriter) {
 }
 
 func getAlert(r *http.Request) *Alert {
-	// If either cookie is missing we will assume the alert
-	// is invalid and return nil
 	lvl, err := r.Cookie("alert_level")
 	if err != nil {
 		return nil
@@ -122,4 +110,13 @@ func getAlert(r *http.Request) *Alert {
 		Message: msg.Value,
 	}
 	return &alert
+}
+
+// RedirectAlert accepts all the normal params for an
+// http.Redirect and performs a redirect, but only after
+// persisting the provided alert in a cookie so that it can
+// be displayed when the new page is loaded.
+func RedirectAlert(w http.ResponseWriter, r *http.Request, urlStr string, code int, alert Alert) {
+	persistAlert(w, alert)
+	http.Redirect(w, r, urlStr, code)
 }

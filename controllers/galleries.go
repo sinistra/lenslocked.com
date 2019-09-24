@@ -13,15 +13,13 @@ import (
 )
 
 const (
-	IndexGalleries = "index_galleries"
-	ShowGallery    = "show_gallery"
-	EditGallery    = "edit_gallery"
+	ShowGallery = "show_gallery"
+	EditGallery = "edit_gallery"
 
 	maxMultipartMem = 1 << 20 // 1 megabyte
 )
 
-func NewGalleries(gs models.GalleryService,
-	is models.ImageService, r *mux.Router) *Galleries {
+func NewGalleries(gs models.GalleryService, is models.ImageService, r *mux.Router) *Galleries {
 	return &Galleries{
 		New:       views.NewView("bootstrap", "galleries/new"),
 		ShowView:  views.NewView("bootstrap", "galleries/show"),
@@ -52,13 +50,6 @@ func (g *Galleries) Index(w http.ResponseWriter, r *http.Request) {
 	user := context.User(r.Context())
 	galleries, err := g.gs.ByUserID(user.ID)
 	if err != nil {
-		// We could attempt to display the index page with
-		// no galleries and an error message, but that isn't
-		// really more useful than a generic error message so
-		// I didn't change this.
-		// Regardless of what page we display, we should try
-		// to make sure the error is logged so we can debug it
-		// later.
 		log.Println(err)
 		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
 		return
@@ -87,7 +78,7 @@ func (g *Galleries) Edit(w http.ResponseWriter, r *http.Request) {
 	}
 	user := context.User(r.Context())
 	if gallery.UserID != user.ID {
-		http.Error(w, "You do not have permission to edit this gallery", http.StatusForbidden)
+		http.Error(w, "Gallery not found", http.StatusNotFound)
 		return
 	}
 	var vd views.Data
@@ -118,13 +109,42 @@ func (g *Galleries) Update(w http.ResponseWriter, r *http.Request) {
 	err = g.gs.Update(gallery)
 	if err != nil {
 		vd.SetAlert(err)
-	} else {
-		vd.Alert = &views.Alert{
-			Level:   views.AlertLvlSuccess,
-			Message: "Gallery successfully updated!",
-		}
+		g.EditView.Render(w, r, vd)
+		return
+	}
+	vd.Alert = &views.Alert{
+		Level:   views.AlertLvlSuccess,
+		Message: "Gallery successfully updated!",
 	}
 	g.EditView.Render(w, r, vd)
+}
+
+// POST /galleries
+func (g *Galleries) Create(w http.ResponseWriter, r *http.Request) {
+	var vd views.Data
+	var form GalleryForm
+	if err := parseForm(r, &form); err != nil {
+		vd.SetAlert(err)
+		g.New.Render(w, r, vd)
+		return
+	}
+	user := context.User(r.Context())
+	gallery := models.Gallery{
+		Title:  form.Title,
+		UserID: user.ID,
+	}
+	if err := g.gs.Create(&gallery); err != nil {
+		vd.SetAlert(err)
+		g.New.Render(w, r, vd)
+		return
+	}
+	url, err := g.r.Get(EditGallery).URL("id", fmt.Sprintf("%v", gallery.ID))
+	if err != nil {
+		log.Println(err)
+		http.Redirect(w, r, "/galleries", http.StatusFound)
+		return
+	}
+	http.Redirect(w, r, url.Path, http.StatusFound)
 }
 
 // POST /galleries/:id/images
@@ -138,7 +158,6 @@ func (g *Galleries) ImageUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Gallery not found", http.StatusNotFound)
 		return
 	}
-
 	var vd views.Data
 	vd.Yield = gallery
 	err = r.ParseMultipartForm(maxMultipartMem)
@@ -148,7 +167,6 @@ func (g *Galleries) ImageUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Iterate over uploaded files to process them.
 	files := r.MultipartForm.File["images"]
 	for _, f := range files {
 		// Open the uploaded file
@@ -159,8 +177,6 @@ func (g *Galleries) ImageUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer file.Close()
-
-		// Create the image
 		err = g.is.Create(gallery.ID, file, f.Filename)
 		if err != nil {
 			vd.SetAlert(err)
@@ -168,9 +184,9 @@ func (g *Galleries) ImageUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	url, err := g.r.Get(EditGallery).URL("id", fmt.Sprintf("%v", gallery.ID))
 	if err != nil {
+		log.Println(err)
 		http.Redirect(w, r, "/galleries", http.StatusFound)
 		return
 	}
@@ -178,6 +194,7 @@ func (g *Galleries) ImageUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /galleries/:id/images/:filename/delete
+//   data:
 func (g *Galleries) ImageDelete(w http.ResponseWriter, r *http.Request) {
 	gallery, err := g.galleryByID(w, r)
 	if err != nil {
@@ -185,8 +202,7 @@ func (g *Galleries) ImageDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	user := context.User(r.Context())
 	if gallery.UserID != user.ID {
-		http.Error(w, "You do not have permission to edit "+
-			"this gallery or image", http.StatusForbidden)
+		http.Error(w, "Gallery not found", http.StatusNotFound)
 		return
 	}
 	filename := mux.Vars(r)["filename"]
@@ -211,40 +227,6 @@ func (g *Galleries) ImageDelete(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, url.Path, http.StatusFound)
 }
 
-// POST /galleries
-func (g *Galleries) Create(w http.ResponseWriter, r *http.Request) {
-	var vd views.Data
-	var form GalleryForm
-	if err := parseForm(r, &form); err != nil {
-		vd.SetAlert(err)
-		g.New.Render(w, r, vd)
-		return
-	}
-	user := context.User(r.Context())
-	gallery := models.Gallery{
-		Title:  form.Title,
-		UserID: user.ID,
-	}
-	if err := g.gs.Create(&gallery); err != nil {
-		vd.SetAlert(err)
-		g.New.Render(w, r, vd)
-		return
-	}
-
-	url, err := g.r.Get(EditGallery).URL("id",
-		strconv.Itoa(int(gallery.ID)))
-	if err != nil {
-		// This error shouldn't ever happen unless our routes
-		// are messed up, but just in case I liked to fallback
-		// to redirecting a user to a hard-coded galleries
-		// index page and logging the error.
-		log.Println(err)
-		http.Redirect(w, r, "/galleries", http.StatusFound)
-		return
-	}
-	http.Redirect(w, r, url.Path, http.StatusFound)
-}
-
 // POST /galleries/:id/delete
 func (g *Galleries) Delete(w http.ResponseWriter, r *http.Request) {
 	gallery, err := g.galleryByID(w, r)
@@ -253,8 +235,7 @@ func (g *Galleries) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	user := context.User(r.Context())
 	if gallery.UserID != user.ID {
-		http.Error(w, "You do not have permission to edit "+
-			"this gallery", http.StatusForbidden)
+		http.Error(w, "Gallery not found", http.StatusNotFound)
 		return
 	}
 	var vd views.Data
@@ -265,29 +246,14 @@ func (g *Galleries) Delete(w http.ResponseWriter, r *http.Request) {
 		g.EditView.Render(w, r, vd)
 		return
 	}
-	url, err := g.r.Get(IndexGalleries).URL()
-	if err != nil {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-	http.Redirect(w, r, url.Path, http.StatusFound)
+	http.Redirect(w, r, "/galleries", http.StatusFound)
 }
 
-// galleryByID will parse the "id" variable from the
-// request path using gorilla/mux and then use that ID to
-// retrieve the gallery from the GalleryService
-//
-// galleryByID will return an error if one occurs, but it
-// will also render the error with an http.Error function
-// call, so you do not need to.
-func (g *Galleries) galleryByID(w http.ResponseWriter,
-	r *http.Request) (*models.Gallery, error) {
+func (g *Galleries) galleryByID(w http.ResponseWriter, r *http.Request) (*models.Gallery, error) {
 	vars := mux.Vars(r)
 	idStr := vars["id"]
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		// This really shouldn't happen with our regex used for
-		// routes with an ID, so we should log the error.
 		log.Println(err)
 		http.Error(w, "Invalid gallery ID", http.StatusNotFound)
 		return nil, err
@@ -298,8 +264,6 @@ func (g *Galleries) galleryByID(w http.ResponseWriter,
 		case models.ErrNotFound:
 			http.Error(w, "Gallery not found", http.StatusNotFound)
 		default:
-			// If we don't get an expected error like ErrNotFound
-			// we should log it so we can look into it later.
 			log.Println(err)
 			http.Error(w, "Whoops! Something went wrong.", http.StatusInternalServerError)
 		}

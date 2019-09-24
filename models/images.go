@@ -6,18 +6,15 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// Image is used to represent images stored in a Gallery.
-// Image is NOT stored in the database, and instead
-// references data stored on disk.
+// Image is NOT stored in the database
 type Image struct {
 	GalleryID uint
 	Filename  string
 }
 
-// Path is used to build the absolute path used to reference this image
-// via a web request.
 func (i *Image) Path() string {
 	temp := url.URL{
 		Path: "/" + i.RelativePath(),
@@ -25,12 +22,8 @@ func (i *Image) Path() string {
 	return temp.String()
 }
 
-// RelativePath is used to build the path to this image on our local
-// disk, relative to where our Go application is run from.
 func (i *Image) RelativePath() string {
-	// Convert the gallery ID to a string
-	galleryID := fmt.Sprintf("%v", i.GalleryID)
-	return filepath.Join("images", "galleries", galleryID, i.Filename)
+	return fmt.Sprintf("images/galleries/%v/%v", i.GalleryID, i.Filename)
 }
 
 type ImageService interface {
@@ -51,7 +44,7 @@ func (is *imageService) Create(galleryID uint, r io.Reader, filename string) err
 		return err
 	}
 	// Create a destination file
-	dst, err := os.Create(filepath.Join(path, filename))
+	dst, err := os.Create(path + filename)
 	if err != nil {
 		return err
 	}
@@ -66,15 +59,15 @@ func (is *imageService) Create(galleryID uint, r io.Reader, filename string) err
 
 func (is *imageService) ByGalleryID(galleryID uint) ([]Image, error) {
 	path := is.imagePath(galleryID)
-	strings, err := filepath.Glob(filepath.Join(path, "*"))
+	imgStrings, err := filepath.Glob(path + "*")
 	if err != nil {
 		return nil, err
 	}
-	// Setup the Image slice we are returning
-	ret := make([]Image, len(strings))
-	for i, imgStr := range strings {
+	ret := make([]Image, len(imgStrings))
+	for i := range imgStrings {
+		imgStrings[i] = strings.Replace(imgStrings[i], path, "", 1)
 		ret[i] = Image{
-			Filename:  filepath.Base(imgStr),
+			Filename:  imgStrings[i],
 			GalleryID: galleryID,
 		}
 	}
@@ -85,13 +78,10 @@ func (is *imageService) Delete(i *Image) error {
 	return os.Remove(i.RelativePath())
 }
 
-// Going to need this when we know it is already made
 func (is *imageService) imagePath(galleryID uint) string {
-	return filepath.Join("images", "galleries",
-		fmt.Sprintf("%v", galleryID))
+	return fmt.Sprintf("images/galleries/%v/", galleryID)
 }
 
-// Use the imagePath method we just made
 func (is *imageService) mkImagePath(galleryID uint) (string, error) {
 	galleryPath := is.imagePath(galleryID)
 	err := os.MkdirAll(galleryPath, 0755)
